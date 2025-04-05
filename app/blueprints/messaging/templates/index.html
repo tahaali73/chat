@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+
+<h1>WebSocket Chat</h1>
+    <div id="messages">
+        <ul id="chat_messages"></ul>
+    </div>
+    
+    <form action="" novalidate>
+        {{ form.hidden_tag() }}
+    
+        <p>
+            {{ form.socket_id.label }}<br>
+            {{ form.socket_id(size=32) }}
+            {% for error in form.socket_id.errors %}
+              <span style="color: red;">{{ error }}</span>
+            {% endfor %}
+        </p>
+
+        <p>
+            {{ form.message.label }}<br>
+            {{ form.message(size=32) }}
+            {% for error in form.message.errors %}
+              <span style="color: red;">{{ error }}</span>
+            {% endfor %}
+        </p>
+
+        <p>
+            {{ form.submit(size=32) }}
+        </p>
+
+    </form>
+
+    <script>
+        const socket = io.connect('http://localhost:5000');
+        const socket_id = document.getElementById("s_id");
+        const messageInput = document.getElementById("msg");
+        const sendBtn = document.getElementById("send_msg");
+        const chatMessages = document.getElementById("chat_messages");
+        
+        // Send message handler
+        sendBtn.addEventListener("click", () => {
+            event.preventDefault();
+            const message = messageInput.value.trim();
+            const sid = socket_id.value.trim();
+            if (message) {
+                socket.emit("client_message", message, sid);
+                messageInput.value = "";
+                socket_id.value = "";
+            }
+        });
+
+        // Receive message handler
+        socket.on("server_response", (data) => {
+            const li = document.createElement("li");
+            li.textContent = data.data;  // Access the correct property
+            chatMessages.appendChild(li);
+            
+            // Scroll to bottom
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        // Enter key handler
+        messageInput.addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendBtn.click();
+        });
+    </script>
+{% endblock %}
+
+

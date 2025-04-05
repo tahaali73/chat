@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>
+            {% if title %}
+            {{title}}
+            {% else %}
+            Chat App
+            {% endif %}
+        </title>
+    </head>
+    <body>
+        <div>
+            Chat App:
+        </div>
+        {% block content %}
+        {% endblock %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div style="color: red;" class="alert {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+    </body>
+</html>
