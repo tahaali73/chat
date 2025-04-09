@@ -12,9 +12,9 @@
         {{ form.hidden_tag() }}
     
         <p>
-            {{ form.socket_id.label }}<br>
-            {{ form.socket_id(size=32) }}
-            {% for error in form.socket_id.errors %}
+            {{ form.usernameReciver.label }}<br>
+            {{ form.usernameReciver(size=32) }}
+            {% for error in form.usernameReciver.errors %}
               <span style="color: red;">{{ error }}</span>
             {% endfor %}
         </p>
@@ -35,7 +35,7 @@
 
     <script>
         const socket = io.connect('http://localhost:5000');
-        const socket_id = document.getElementById("s_id");
+        const usernameReciver = document.getElementById("reciever_username");
         const messageInput = document.getElementById("msg");
         const sendBtn = document.getElementById("send_msg");
         const chatMessages = document.getElementById("chat_messages");
@@ -44,11 +44,11 @@
         sendBtn.addEventListener("click", () => {
             event.preventDefault();
             const message = messageInput.value.trim();
-            const sid = socket_id.value.trim();
+            const username_reciever = usernameReciver.value.trim();
             if (message) {
-                socket.emit("client_message", message, sid);
+                socket.emit("client_message", message, username_reciever);
                 messageInput.value = "";
-                socket_id.value = "";
+             usernameReciver.value = "";
             }
         });
 

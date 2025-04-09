@@ -1,4 +1,4 @@
-from flask import render_template, flash, jsonify
+from flask import render_template, flash, jsonify, redirect, url_for, request
 from app.blueprints.auth.form import RegistrationForm, LoginForm
 from app.extensions import mongo 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -41,6 +41,7 @@ class Auth_Model():
                     "password_hash":pass_hash
                 }
                 mongo.db.user.insert_one(user_data)
+                return redirect(url_for('auth.login'),302)
             else:
                 flash("Username or email address already taken", "failure")
             
@@ -63,42 +64,45 @@ class Auth_Model():
                 
                 # storing refresh token hash in database
                 user_filter = {"username":user['username']}
-                user_update = {"$set":{"refresh_token": refresh_token}}
+                user_update = {"$set":{"refresh_token": self.pass_hash_generator(refresh_token)}}
                 mongo.db.user.update_one(user_filter, user_update)
                 
-                response = jsonify(msg="Login successful")
+                # storing token in cookies for client 
+                response = redirect(url_for('messaging.chat'),302)
                 set_access_cookies(response, access_token)
                 set_refresh_cookies(response, refresh_token)
-                
+                return response
             
             else:
                 flash("invalid credentials","failure")    
                      
         return render_template('login.html',form=form,title='Login')
     
+    def logout_user(self):
+        id=get_jwt_identity()
+        
+        mongo.db.user.update_one({'_id': ObjectId(id)}, 
+                                 {'$unset': {'refresh_token': ''}})
+        
+        response = redirect(url_for('auth.login'),302)
+        unset_jwt_cookies(response)
+        return response
     
     def token_refresh(self, refresh_token):
         id = get_jwt_identity()
-        #decode=decode_token(refresh_token)
-        #inc_id=decode['jti']
         user = mongo.db.user.find_one({"_id": ObjectId(id)})
-        #decode_stored = decode_token(user['refresh_token'])
-        #str_id = decode_stored['jti']
-        #print(f"inc: {inc_id}")
-        #print(f"str_id: {str_id}")
+        
         if user is None or "refresh_token" not in user:
             return jsonify(msg="User not found or token missing"), 401
 
         stored_token_hash = user["refresh_token"]
 
         # Compare hash of the refresh token
-        if not (stored_token_hash == refresh_token):
-            #print(f"stored_token: {user['refresh_token']}")
-            #print(f"incomming_token: {refresh_token}")
+        if not (self.pass_hash_check(stored_token_hash,refresh_token)):
             return jsonify(msg="Invalid refresh token from auth model"), 401
 
         new_access_token = create_access_token(identity=id, fresh=False)
-        response = jsonify(msg="Token refreshed")
+        response = redirect(url_for("messaging.chat"))
         set_access_cookies(response, new_access_token)
         return response
 

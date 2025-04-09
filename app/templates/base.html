@@ -10,9 +10,20 @@
         </title>
     </head>
     <body>
+        
         <div>
             Chat App:
+            {% if request.endpoint not in ['auth.login', 'auth.registration'] %}
+              <a href="{{ url_for('auth.logout') }}">Logout</a>
+            {% endif %}
+            {% if request.endpoint == 'auth.registration' %}
+              <a href="{{ url_for('auth.login') }}">Login</a>
+            {% endif %}
+            {% if request.endpoint == 'auth.login' %}
+              <a href="{{ url_for('auth.registration') }}">Register now</a>
+            {% endif %}
         </div>
+
         {% block content %}
         {% endblock %}
         {% with messages = get_flashed_messages(with_categories=true) %}
