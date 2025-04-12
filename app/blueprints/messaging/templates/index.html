@@ -9,26 +9,26 @@
     </div>
     
     <form action="" novalidate>
-        {{ form.hidden_tag() }}
+        {{ forms.hidden_tag() }}
     
         <p>
-            {{ form.usernameReciver.label }}<br>
-            {{ form.usernameReciver(size=32) }}
-            {% for error in form.usernameReciver.errors %}
+            {{ forms.usernameReciver.label }}<br>
+            {{ forms.usernameReciver(size=32) }}
+            {% for error in forms.usernameReciver.errors %}
               <span style="color: red;">{{ error }}</span>
             {% endfor %}
         </p>
 
         <p>
-            {{ form.message.label }}<br>
-            {{ form.message(size=32) }}
-            {% for error in form.message.errors %}
+            {{ forms.message.label }}<br>
+            {{ forms.message(size=32) }}
+            {% for error in forms.message.errors %}
               <span style="color: red;">{{ error }}</span>
             {% endfor %}
         </p>
 
         <p>
-            {{ form.submit(size=32) }}
+            {{ forms.submit(size=32) }}
         </p>
 
     </form>

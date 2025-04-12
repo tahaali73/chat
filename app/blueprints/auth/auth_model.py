@@ -82,7 +82,7 @@ class Auth_Model():
         id=get_jwt_identity()
         
         mongo.db.user.update_one({'_id': ObjectId(id)}, 
-                                 {'$unset': {'refresh_token': ''}})
+                                 {'$unset': {'refresh_token': '','access_token':''}})
         
         response = redirect(url_for('auth.login'),302)
         unset_jwt_cookies(response)

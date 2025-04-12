@@ -7,12 +7,11 @@ socket = socke_handles()
 
 class Msg_model():
     
-    def msg(self):
-        form = MessageForm()
-        user_id = get_jwt_identity()
-        socke_handles.connect(user_id=user_id)
-        socke_handles.disconnect(user_id=user_id)
+    def msg(self,user_id):
+        forms = MessageForm()
+        socke_handles.connect(user_id)
+        socke_handles.disconnect()
         socke_handles.message(user_id)
-        return render_template("index.html",form=form)
+        return render_template("index.html",forms=forms)
     
         
