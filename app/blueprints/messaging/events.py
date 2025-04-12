@@ -54,17 +54,15 @@ class socke_handles():
     def message(id):
             @socketio.on('client_message')
             def handle_message(message,rec_username): # Expecting message and rec_username in the data
-                user_id = id
+               
                 sid = request.sid
-                
-                print(f'Received from {user_id} ({sid}): {message} to {rec_username}')
 
-                if user_id and rec_username and message:
+                if rec_username and message:
                     try:
-                        sender = mongo.db.user.find_one({"_id": ObjectId(user_id)})
-                        
+                        sender = mongo.db.user.find_one({"socket_id": sid})
+                        user_id = str(sender['_id'])
                         if not sender:
-                            print(f"Sender with ID {user_id} not found")
+                            print(f"Sender with not found")
                             return
 
                         reciever = mongo.db.user.find_one({"username": rec_username})

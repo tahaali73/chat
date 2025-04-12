@@ -12,9 +12,7 @@ model = Msg_model()
 @jwt_required()
 def msg():
     user_id = get_jwt_identity()
+    print(user_id)
     return model.msg(user_id)
 
-@msg_bp.route('/check_token_expiry',endpoint="check_token_expiry")
-@jwt_required()
-def check():
-    return jsonify({'msg': "token is working"})
+
