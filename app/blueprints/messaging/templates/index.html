@@ -4,6 +4,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 
 <h1>WebSocket Chat</h1>
+    <div id="typing-indicator" style="display: none;">User is typing...</div>
     <div id="messages">
         <ul id="chat_messages"></ul>
     </div>
@@ -39,7 +40,8 @@
         const messageInput = document.getElementById("msg");
         const sendBtn = document.getElementById("send_msg");
         const chatMessages = document.getElementById("chat_messages");
-        
+        const typingIndicator = document.getElementById("typing-indicator");
+        let typingTimeout;
         // Send message handler
         sendBtn.addEventListener("click", () => {
             event.preventDefault();
@@ -63,9 +65,31 @@
         });
 
         // Enter key handler
-        messageInput.addEventListener("keypress", (e) => {
-            if (e.key === "Enter") sendBtn.click();
+        
+
+        socket.on("typin_indicator", (data) => {
+            typingIndicator.style.display = "block";
+
+            clearTimeout(typingTimeout);
+
+            typingTimeout = setTimeout(() => {
+                typingIndicator.style.display = "none";
+            }, 2000);
         });
+
+        
+         
+
+        messageInput.addEventListener("input", (event) => {
+            event.preventDefault();
+            console.log('typing')
+            //const username_reciever = usernameReciver.value.trim();
+            socket.emit("typing", 'taha');
+            
+        });
+        
+
+
     </script>
 {% endblock %}
 

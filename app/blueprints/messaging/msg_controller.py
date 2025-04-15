@@ -12,7 +12,12 @@ model = Msg_model()
 @jwt_required()
 def msg():
     user_id = get_jwt_identity()
-    print(user_id)
-    return model.msg(user_id)
+    return model.msg(user_id=user_id)
+
+@msg_bp.route('/get-chat/<username>',endpoint="get-chat")
+@jwt_required()
+def getChat(username):
+    user_id = get_jwt_identity()
+    return model.getChat(user_id=user_id,usernmae=username)
 
 

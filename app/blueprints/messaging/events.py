@@ -1,7 +1,6 @@
 from app.extensions import socketio, mongo
 from bson import ObjectId
 from flask_socketio import emit
-from flask_jwt_extended import jwt_required
 from flask import request 
 from datetime import datetime
 import hashlib
@@ -51,7 +50,7 @@ class socke_handles():
                     )
                     emit("user_status", {"user_id": user_id, "status": "offline"}, broadcast=True)
     
-    def message(id):
+    def message():
             @socketio.on('client_message')
             def handle_message(message,rec_username): # Expecting message and rec_username in the data
                
@@ -95,5 +94,18 @@ class socke_handles():
                         emit('server_response', {'error': 'Failed to send message'}, room=sid)
                 else:
                     print("Incomplete message data received")
-
+                    
+                
+    def typing():
+        @socketio.on('typing')
+        def handle_typing(rec_username):
+            try:
+                reciever = mongo.db.user.find_one({'username':rec_username})
+                reciever_id = reciever['socket_id']
+                if reciever_id:
+                   emit('typin_indicator',room=reciever_id )
+            except TypeError:
+                None
+    
+    
     
