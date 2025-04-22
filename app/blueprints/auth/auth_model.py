@@ -4,8 +4,8 @@ from app.extensions import mongo
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
-    jwt_required, get_jwt_identity, set_access_cookies,
-    set_refresh_cookies, unset_jwt_cookies, decode_token
+    get_jwt_identity, set_access_cookies,
+    set_refresh_cookies, unset_jwt_cookies
 )
 from bson import ObjectId
 

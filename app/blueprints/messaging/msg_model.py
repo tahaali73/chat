@@ -42,7 +42,7 @@ class Msg_model():
         socke_handles.disconnect()
         socke_handles.message()
         socke_handles.typing()
-        
+        socke_handles.active_chat()
         contacts = self.get_contacts(user_id)
         
         return render_template("chat_area.html",forms=forms,contacts=contacts,user_id=user_id)
@@ -51,7 +51,7 @@ class Msg_model():
         
         try:
             reciever=mongo.db.user.find_one({"username":usernmae})
-            print(reciever)
+            #print(reciever)
             reciever_id = reciever['_id']
             try:
               status=reciever['status']
@@ -60,7 +60,7 @@ class Msg_model():
             try:
                 last_seen=reciever['last_seen']
                 last_seen = self.format_last_seen(last_seen)
-            except TypeError:
+            except (TypeError, KeyError):
                 last_seen="offline"
                 
             print(reciever_id)

@@ -170,6 +170,11 @@
       .chat-main {
         height: 60%;
       }
+
+      .contact-item.selected {
+        background: #f0f2f5;
+        border-radius: 8px;
+      }
     }
   </style>
 </head>
@@ -184,34 +189,36 @@
             <div style="font-weight: 600;">private chat app</div>
           </div>
         </div>
-        <div class="contact-list">
-      {% if contacts %}
-      {% for contact in contacts %}
-          <div class="contact-item" data-username="{{ contact['username'] }}">
-            <img src="https://i.pravatar.cc/40?img=1" />
-            <div>
-              <div style="font-weight: 600;">{{contact['name']}}</div>
-              <div class="user-status">{{contact['username']}}</div>
-            </div>
-          </div>
-          {% endfor %}
+
+        <div class="contact-list contacts-container" id="contact-list">
+          {% if contacts %}
+            {% for contact in contacts %}
+              <div class="contact-item" data-username="{{ contact['username'] }}">
+                <img src="https://i.pravatar.cc/40?img=1" />
+                <div>
+                  <div style="font-weight: 600;">{{ contact['name'] }}</div>
+                  <div class="user-status">{{ contact['username'] }}</div>
+                </div>
+              </div>
+            {% endfor %}
           {% endif %}
-          <!-- Repeat more contact-item blocks as needed -->
-        </div>
+        </div>   
+
       </div>
 
     <div class="chat-main">
+
       <div class="chat-topbar">
-        
         <img src="https://i.pravatar.cc/40?img=2" alt="" style="border-radius: 50%; margin-right: 1rem;" />
-        
         <div>
-          
           <div style="font-weight: 600;" class="topbar-name">taha</div>
-          
-          <div class="user-status" id="status"></div>
+          <div class="status-container">
+            <span class="status-dot"></span>
+            <span id="status-text" class="status-text"></span>
+          </div>
         </div>
       </div>
+      
       <div class="chat-messages">
         <div class="message received">Hello, how are you?</div>
         <div class="message sent">I'm good! Thanks for asking.</div>
@@ -224,50 +231,109 @@
     </div>
   </div>
 
+  <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <script>
-    const contactItems = document.querySelectorAll('.contact-item');
-    const currentUserId = "{{user_id}}";
-
-    contactItems.forEach((item) => {
-        item.addEventListener('click', () => {
-            const username = item.getAttribute('data-username');
-            
-            // Update topbar name immediately
-            const contactName = item.querySelector("div > div:first-child").textContent;
-            document.querySelector(".chat-topbar .topbar-name").textContent = contactName;
-
-            // Fetch chat data
-            fetch(`/get-chat/${username}`)
-            .then((response) => {
-                if (!response.ok) throw new Error(response.statusText);
-                return response.json();
-            })
-            .then((data) => {
-                if (data.msg) {
-                    console.error(data.msg);
-                } else {
-                    // Update status
-                    const statusElement = document.getElementById("status");
-                    statusElement.textContent = data.status === "offline" 
-                        ? data.last_seen 
-                        : "online";
-
-                    // Update messages
-                    const chatMessages = document.querySelector(".chat-messages");
-                    chatMessages.innerHTML = "";
-                    
-                    data.message_data.forEach((message) => {
-                        const messageElement = document.createElement("div");
-                        messageElement.classList.add("message");
-                        messageElement.classList.add(message.sender_id === currentUserId ? "sent" : "received");
-                        messageElement.textContent = message.message_text;
-                        chatMessages.appendChild(messageElement);
-                    });
-                }
-            })
-            .catch((error) => console.error(error));
-        });
+    
+    const socket = io("http://localhost:8000", {
+      query: {
+        user_id: "{{ user_id }}"
+      }
     });
+    
+    socket.on("connect", () => {
+      console.log("Connected to server with ID:", socket.id);
+    });
+    
+    socket.on("status_online", (data) => {
+      console.log("status online", data);
+    });
+
+    socket.on("status_offline", (data) => {
+      console.log("status offline", data.data);
+    });
+
+
+    const contactList = document.getElementById("contact-list");
+    const currentUserId = "{{user_id}}";
+    let selectedContact = null;
+    
+    
+      // Deselect previous
+      window.addEventListener('beforeunload', () => {
+        if (selectedContact) {
+          const username = selectedContact.dataset.username;
+          socket.emit("chat_deselected", {
+            deselected_username: username,
+            my_id: currentUserId
+          });
+        }
+      });
+      
+      document.querySelector('.contacts-container').addEventListener('click', (e) => {
+        const contactItem = e.target.closest('.contact-item');
+        if (!contactItem) return;
+      
+        const username = contactItem.dataset.username;
+      
+        if (selectedContact === contactItem) return;
+      
+      // Deselect previous
+      if (selectedContact) {
+          const prevUsername = selectedContact.dataset.username;  // Get from DOM
+          selectedContact.classList.remove('selected');
+          document.dispatchEvent(new CustomEvent('chat:deselected', {
+            detail: { username: prevUsername }  // Use DOM-stored value
+          }));
+        }
+    
+      // Select new
+      selectedContact = contactItem;
+      selectedContact.classList.add('selected');
+      document.dispatchEvent(new CustomEvent('chat:selected', {
+        detail: { username }
+      }));
+    
+      // Update topbar name
+      const contactName = contactItem.querySelector("div > div:first-child").textContent;
+      document.querySelector(".chat-topbar .topbar-name").textContent = contactName;
+    
+      // Fetch chat messages
+      fetch(`/get-chat/${username}`)
+        .then((response) => {
+          if (!response.ok) throw new Error(response.statusText);
+          return response.json();
+        })
+        .then((data) => {
+          const statusElement = document.getElementById("status-text");
+          statusElement.textContent = data.status === "offline"
+            ? data.last_seen
+            : "online";
+    
+          const chatMessages = document.querySelector(".chat-messages");
+          chatMessages.innerHTML = "";
+    
+          data.message_data.forEach((message) => {
+            const messageElement = document.createElement("div");
+            messageElement.classList.add("message");
+            messageElement.classList.add(message.sender_id === currentUserId ? "sent" : "received");
+            messageElement.textContent = message.message_text;
+            chatMessages.appendChild(messageElement);
+          });
+        })
+        .catch((err) => console.error("Chat fetch error:", err));
+    });
+    
+    // Event listeners for custom events
+    document.addEventListener('chat:selected', (e) => {
+      console.log("Selected chat:", e.detail.username);
+      socket.emit("chat_selected",{"selected_username":e.detail.username, "my_id":currentUserId } )
+    });
+    
+    document.addEventListener('chat:deselected', (e) => {
+      console.log("Deselected chat:", e.detail.username);
+      socket.emit("chat_deselected",{"deselected_username":e.detail.username, "my_id":currentUserId } )
+    });
+    
 </script>
 
 </body>

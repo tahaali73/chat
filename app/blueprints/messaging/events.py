@@ -1,7 +1,7 @@
 from app.extensions import socketio, mongo
 from bson import ObjectId
 from flask_socketio import emit
-from flask import request 
+from flask import request , flash
 from datetime import datetime
 import hashlib
 
@@ -19,36 +19,136 @@ class socke_handles():
     def connect(id):
             @socketio.on('connect')
             def handle_connect():
-                user_id = id
-                if user_id:
-                    user = mongo.db.user.find_one({"_id": ObjectId(user_id)})
-                    if user:
-                        usernam = user['username']
-                        print(f'{usernam}: connected {request.sid}')
-                        mongo.db.user.update_one(
-                            {"_id": ObjectId(user_id)},
-                            {"$set": {"status": "online", "socket_id": str(request.sid)}}
+                user_id = request.args.get('user_id')
+                
+                if user_id != id:
+                    print("wrong user_id provided. Disconnecting.")
+                    return False 
+                
+                user = mongo.db.user.find_one({"_id": ObjectId(id)})
+                if user:
+                    current_username = user['username']
+                    print(f'{current_username}: connected {request.sid}')
+                    
+                    mongo.db.user.update_one(
+                        {"_id": ObjectId(id)},
+                        {"$set": {
+                            "socket_id": str(request.sid),
+                            "status": True
+                                  }}
                         )
-                        emit("user_status", {"user_id": user_id, "status": "online"}, broadcast=True)
-                    else:
-                        print(f"User with ID {user_id} not found")
+                    
+                    # getting active list from db
+                    try:
+                        actives=mongo.db.chatActive.find_one({"username": current_username})
+                        active_list = actives["active"]
+                    except:
+                        active_list=[] # if active list not exist keep active list empty to avoid unneccosory conditional checks
+                        print("actives not found")
+                     
+                    # emit event to active list users if exist    
+                    if len(active_list)>0:
+                        for username in active_list: # geting username one by one from list
+                            
+                            user_ = mongo.db.user.find_one({"username":username}) # getting user 
+                            
+                            try:
+                               socket_id = user_["socket_id"] # gettin user socket id
+                               socketio.emit("status_online",{"data":current_username},to=socket_id) 
+                            except:
+                                None
+                    
                 else:
-                    print("Connect event without user_id")
+                    print(f"User with ID {id} not found")
+                
                     
     def disconnect():
             @socketio.on('disconnect')
             def handle_disconnect():
-                print(f'Client disconnected: {request.sid}')
                 # You'll need to retrieve the user_id associated with this socket_id
-                user = mongo.db.user.find_one({"socket_id": str(request.sid)})
+                user = mongo.db.user.find_one({"socket_id": request.sid})
+                
                 if user:
+                    current_username = user["username"]
+                    print(f'Client disconnected: {current_username}')
+                    try:
+                        actives=mongo.db.chatActive.find_one({"username": current_username})
+                        active_list = actives["active"]
+                    except:
+                        active_list=[] # if active list not exist keep active list empty to avoid unneccosory conditional checks
+                        print("actives not found")
+                     
+                    # emit event to active list users if exist    
+                    if len(active_list)>0:
+                        for username in active_list: # geting username one by one from list
+                            print(username)
+                            user_ = mongo.db.user.find_one({"username":username}) # getting user 
+                            
+                            try:
+                               socket_id = user_["socket_id"] # getting user socket id 
+                               socketio.emit("status_offline",{"data":current_username}, to=socket_id) 
+                            except:
+                                None
+                    
                     user_id = str(user['_id'])
                     mongo.db.user.update_one(
                         {"_id": ObjectId(user_id)},
-                        {"$set": {"status": "offline", "last_seen": datetime.utcnow().isoformat()},
-                        "$unset": {'socket_id': ''}}
-                    )
-                    emit("user_status", {"user_id": user_id, "status": "offline"}, broadcast=True)
+                        {"$set": {"status": False, "last_seen": datetime.utcnow().isoformat()},
+                        "$unset": {'socket_id': ''}})
+                    
+    def active_chat():
+        
+            
+            
+            @socketio.on('chat_selected')
+            def handle_active_chat(data):
+                my_id = data["my_id"]
+                selected_username = data["selected_username"]
+                user = mongo.db.user.find_one({"_id": ObjectId(my_id)})
+                username = user['username']
+                user_1 = mongo.db.user.find_one({"username":selected_username})
+                
+                if user_1:
+                    try:    
+                        
+                        mongo.db.chatActive.update_one(
+                                                {"username": selected_username}, 
+                                                {
+                                                    "$setOnInsert": {"username": selected_username}, 
+                                                    "$addToSet": {"active": username}
+                                                }, 
+                                                upsert=True)
+                    except:
+                        print("active not added")
+                
+            @socketio.on('chat_deselected')
+            def handle_deactive_chat(data):
+                
+                my_id = data["my_id"]
+                deselected_username = data["deselected_username"]
+                user = mongo.db.user.find_one({"_id": ObjectId(my_id)})
+                username = user['username']
+                user_1 = mongo.db.user.find_one({"username":deselected_username})
+                
+                if user_1:
+                    try:
+                        update_result = mongo.db.chatActive.update_one(
+                            {"username": deselected_username},
+                            {"$pull": {"active": username}}
+                            )
+                        
+                        if update_result.modified_count > 0:
+                            mongo.db.chatActive.delete_one(
+                                {"username": deselected_username, "active": {"$size": 0}}
+                            )
+                        
+                    except:
+                        print("deselect query not excueted")
+            
+
+            
+            
+                    
     
     def message():
             @socketio.on('client_message')
@@ -62,6 +162,7 @@ class socke_handles():
                         user_id = str(sender['_id'])
                         if not sender:
                             print(f"Sender with not found")
+                            flash("contact not found")
                             return
 
                         reciever = mongo.db.user.find_one({"username": rec_username})
