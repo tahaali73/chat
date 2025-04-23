@@ -104,12 +104,11 @@
     }
 
     .chat-messages {
-      flex-grow: 1;
-      padding: 1rem;
-      overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 1rem;
+      justify-content: flex-end; /* ensures bottom alignment */
+      overflow-y: auto;
+      height: 100%; /* or set a specific height */
     }
 
     .message {
@@ -176,6 +175,32 @@
         border-radius: 8px;
       }
     }
+
+    .typing-indicator {
+      font-style: italic;
+      opacity: 0.7;
+      color: var(--text-muted);
+      background-color: transparent !important;
+      box-shadow: none;
+      padding-left: 0.5rem;
+    }
+
+    .typing-indicator::after {
+      content: ' .';
+      animation: dots 1s steps(3, end) infinite;
+    }
+    
+    @keyframes dots {
+      0%, 20% {
+        content: ' .';
+      }
+      40% {
+        content: ' ..';
+      }
+      60%, 80%, 100% {
+        content: ' ...';
+      }
+    }
   </style>
 </head>
 <body>
@@ -225,7 +250,7 @@
       </div>
       <div class="chat-input">
         <button>✉️</button>
-        <input type="text" placeholder="Type your message here" />
+        <input id="msg" type="text" placeholder="Type your message here" />
         <button>Send</button>
       </div>
     </div>
@@ -246,35 +271,51 @@
     
     socket.on("status_online", (data) => {
       console.log("status online", data);
+      const statusElement = document.getElementById("status-text");
+      statusElement.textContent = "online";
     });
 
     socket.on("status_offline", (data) => {
       console.log("status offline", data.data);
+      const statusElement = document.getElementById("status-text");
+      statusElement.textContent = "offline";
     });
 
 
     const contactList = document.getElementById("contact-list");
     const currentUserId = "{{user_id}}";
     let selectedContact = null;
-    
-    
+    let currentSelectedUsername = null;
+    let typingTimeout; 
+    let typingIndicatorElement = null;
+
       // Deselect previous
       window.addEventListener('beforeunload', () => {
         if (selectedContact) {
           const username = selectedContact.dataset.username;
-          socket.emit("chat_deselected", {
-            deselected_username: username,
-            my_id: currentUserId
-          });
+          console.log("selected contact: ",username)
+          socket.volatile.emit("chat_deselected", { "deselected_username": username, "my_id": currentUserId });
         }
       });
-      
+
+      const messageInput = document.getElementById("msg");
+
+      // Set up input listener only once
+      messageInput.addEventListener("input", (event) => {
+        event.preventDefault();
+        if (currentSelectedUsername) {
+          console.log('typing:', currentSelectedUsername);
+          socket.emit("typing", {"username":currentSelectedUsername,"user_id":currentUserId});
+        }
+      })
+
       document.querySelector('.contacts-container').addEventListener('click', (e) => {
         const contactItem = e.target.closest('.contact-item');
         if (!contactItem) return;
       
         const username = contactItem.dataset.username;
-      
+        currentSelectedUsername = username; 
+
         if (selectedContact === contactItem) return;
       
       // Deselect previous
@@ -305,9 +346,9 @@
         })
         .then((data) => {
           const statusElement = document.getElementById("status-text");
-          statusElement.textContent = data.status === "offline"
+          statusElement.textContent = data.status === false
             ? data.last_seen
-            : "online";
+            : (data.status === true ? "online" : "");
     
           const chatMessages = document.querySelector(".chat-messages");
           chatMessages.innerHTML = "";
@@ -333,6 +374,37 @@
       console.log("Deselected chat:", e.detail.username);
       socket.emit("chat_deselected",{"deselected_username":e.detail.username, "my_id":currentUserId } )
     });
+
+    
+
+    socket.on("typin_indicator", (data) => {
+      const chatMessages = document.querySelector(".chat-messages");
+    
+      // Remove existing typing indicator if any
+      if (typingIndicatorElement && typingIndicatorElement.parentNode === chatMessages) {
+        chatMessages.removeChild(typingIndicatorElement);
+      }
+      
+    
+      // Create new typing indicator element
+      typingIndicatorElement = document.createElement("div");
+      typingIndicatorElement.classList.add("message", "received", "typing-indicator");
+      typingIndicatorElement.textContent = `${data.data || "User"} is typing`;
+
+      chatMessages.appendChild(typingIndicatorElement);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+      // Clear previous timeout
+      clearTimeout(typingTimeout);
+    
+      // Remove the typing indicator after 2 seconds
+      typingTimeout = setTimeout(() => {
+        if (typingIndicatorElement) {
+          chatMessages.removeChild(typingIndicatorElement);
+          typingIndicatorElement = null;
+        }
+      }, 2000);
+      });
     
 </script>
 

@@ -25,7 +25,7 @@ class socke_handles():
                     print("wrong user_id provided. Disconnecting.")
                     return False 
                 
-                user = mongo.db.user.find_one({"_id": ObjectId(id)})
+                user = mongo.db.user.find_one({"_id": ObjectId(user_id)})
                 if user:
                     current_username = user['username']
                     print(f'{current_username}: connected {request.sid}')
@@ -123,7 +123,7 @@ class socke_handles():
                 
             @socketio.on('chat_deselected')
             def handle_deactive_chat(data):
-                
+                print("worked on reload")
                 my_id = data["my_id"]
                 deselected_username = data["deselected_username"]
                 user = mongo.db.user.find_one({"_id": ObjectId(my_id)})
@@ -199,14 +199,22 @@ class socke_handles():
                 
     def typing():
         @socketio.on('typing')
-        def handle_typing(rec_username):
-            try:
-                reciever = mongo.db.user.find_one({'username':rec_username})
-                reciever_id = reciever['socket_id']
-                if reciever_id:
-                   emit('typin_indicator',room=reciever_id )
-            except TypeError:
-                None
+        def handle_typing(data):
+            rec_username = data["username"]
+            user_id = data["user_id"]
+            user=mongo.db.user.find_one({"_id": ObjectId(user_id)})
+            username = user["username"]
+            actives=mongo.db.chatActive.find_one({"username":username})
+            
+            
+            if actives and (rec_username in actives["active"]):
+                try:
+                    reciever = mongo.db.user.find_one({'username':rec_username})
+                    reciever_id = reciever['socket_id']
+                    if reciever_id:
+                       emit('typin_indicator',{"data":username},room=reciever_id )
+                except:
+                    None
     
     
     

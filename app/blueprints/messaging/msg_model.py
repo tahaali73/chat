@@ -64,8 +64,8 @@ class Msg_model():
                 last_seen="offline"
                 
             print(reciever_id)
-        except TypeError:
-            return make_response({"msg":"no username found"},201)
+        except:
+            None
         
         try:
             contacts = self.get_contacts(user_id)
