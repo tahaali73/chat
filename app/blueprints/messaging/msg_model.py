@@ -1,4 +1,4 @@
-from flask import render_template, make_response
+from flask import render_template, make_response, request, jsonify
 from datetime import datetime
 from app.extensions import mongo
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -39,10 +39,10 @@ class Msg_model():
     def msg(self,user_id):
         forms = MessageForm()
         socke_handles.connect(user_id)
+        socke_handles.active_chat()
         socke_handles.disconnect()
         socke_handles.message()
         socke_handles.typing()
-        socke_handles.active_chat()
         contacts = self.get_contacts(user_id)
         
         return render_template("chat_area.html",forms=forms,contacts=contacts,user_id=user_id)
@@ -84,6 +84,34 @@ class Msg_model():
         
         return make_response({"contact_name":contacts,"status":status,"last_seen":last_seen,"message_data":message_detail},200)
         
-        
+    
+    def handle_chat_deselected(self):
+            data = request.get_json()
+            my_id = data.get("my_id")
+            deselected_username = data.get("deselected_username")
+
+            user = mongo.db.user.find_one({"_id": ObjectId(my_id)})
+            if not user:
+                return jsonify({"success": False, "error": "User not found"}), 400
+
+            username = user["username"]
+            user_1 = mongo.db.user.find_one({"username": deselected_username})
+            if user_1:
+                try:
+                    update_result = mongo.db.chatActive.update_one(
+                        {"username": deselected_username},
+                        {"$pull": {"active": username}}
+                    )
+
+                    if update_result.modified_count > 0:
+                        mongo.db.chatActive.delete_one(
+                            {"username": deselected_username, "active": {"$size": 0}}
+                        )
+                except Exception as e:
+                    print("Deselect error:", e)
+                    return jsonify({"success": False}), 500
+
+            return jsonify({"success": True}), 200
+
     
         

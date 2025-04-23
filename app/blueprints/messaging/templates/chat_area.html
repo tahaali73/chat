@@ -290,11 +290,16 @@
     let typingIndicatorElement = null;
 
       // Deselect previous
-      window.addEventListener('beforeunload', () => {
+      window.addEventListener("beforeunload", () => {
         if (selectedContact) {
-          const username = selectedContact.dataset.username;
-          console.log("selected contact: ",username)
-          socket.volatile.emit("chat_deselected", { "deselected_username": username, "my_id": currentUserId });
+          const deselectedUsername = selectedContact.dataset.username;
+          const payload = {
+            deselected_username: deselectedUsername,
+            my_id: currentUserId,
+          };
+      
+          const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+          navigator.sendBeacon("/chat_deselected", blob);
         }
       });
 
