@@ -93,6 +93,7 @@
       display: flex;
       flex-direction: column;
       background: var(--bg-dark);
+      height: 100vh; /* or any fixed height */
     }
 
     .chat-topbar {
@@ -101,14 +102,16 @@
       display: flex;
       align-items: center;
       background-color: var(--gray);
+      flex-shrink: 0;
     }
 
     .chat-messages {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding: 10px;
       display: flex;
       flex-direction: column;
-      justify-content: flex-end; /* ensures bottom alignment */
-      overflow-y: auto;
-      height: 100%; /* or set a specific height */
+      justify-content: flex-end;
     }
 
     .message {
@@ -130,12 +133,22 @@
       background-color: var(--gray);
     }
 
+    .message p {
+      margin-bottom: 0.5em;
+    }
+    
+    .message small {
+      font-size: 0.8em;
+      color: #666;
+    }
+
     .chat-input {
       padding: 1rem;
       display: flex;
       align-items: center;
       border-top: 1px solid var(--border);
       background-color: var(--gray);
+      flex-shrink: 0;
     }
 
     .chat-input input {
@@ -251,10 +264,18 @@
       <div class="chat-input">
         <button>✉️</button>
         <input id="msg" type="text" placeholder="Type your message here" />
-        <button>Send</button>
+        <button id="send_msg">Send</button>
       </div>
     </div>
   </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div style="color: red;" class="alert {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+  {% endwith %}
 
   <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
   <script>
@@ -269,6 +290,18 @@
       console.log("Connected to server with ID:", socket.id);
     });
     
+    // variables
+    const messageInput = document.getElementById("msg");
+    const contactList = document.getElementById("contact-list");
+    const currentUserId = "{{user_id}}";
+    let seen_ = null;
+    let selectedContact = null;
+    let currentSelectedUsername = null;
+    let typingTimeout; 
+    let typingIndicatorElement = null;
+    const sendBtn = document.getElementById("send_msg");
+
+
     socket.on("status_online", (data) => {
       console.log("status online", data);
       const statusElement = document.getElementById("status-text");
@@ -281,16 +314,8 @@
       statusElement.textContent = "offline";
     });
 
-
-    const contactList = document.getElementById("contact-list");
-    const currentUserId = "{{user_id}}";
-    let selectedContact = null;
-    let currentSelectedUsername = null;
-    let typingTimeout; 
-    let typingIndicatorElement = null;
-
       // Deselect previous
-      window.addEventListener("beforeunload", () => {
+    window.addEventListener("beforeunload", () => {
         if (selectedContact) {
           const deselectedUsername = selectedContact.dataset.username;
           const payload = {
@@ -301,18 +326,140 @@
           const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
           navigator.sendBeacon("/chat_deselected", blob);
         }
-      });
-
-      const messageInput = document.getElementById("msg");
+    });
 
       // Set up input listener only once
-      messageInput.addEventListener("input", (event) => {
+    messageInput.addEventListener("input", (event) => {
         event.preventDefault();
         if (currentSelectedUsername) {
           console.log('typing:', currentSelectedUsername);
           socket.emit("typing", {"username":currentSelectedUsername,"user_id":currentUserId});
         }
-      })
+    })
+
+    // lastseen function
+    function formatLastSeen(lastSeenEpoch) {
+      if (lastSeenEpoch === 0) {
+          return "Status not available";
+      }
+  
+      
+      const lastSeenDate = new Date(lastSeenEpoch); 
+      const now = new Date();
+      const diff = now.getTime() - lastSeenDate.getTime();
+  
+      
+      if (isNaN(lastSeenDate.getTime())) {
+          return "Invalid time format";
+      }
+  
+      const seconds = Math.floor(diff / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+  
+      
+      const formatDate = (date) => {
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = String(date.getFullYear()).slice(-2);
+          return `${day}/${month}/${year}`;
+      };
+  
+      if (days === 0) {
+          if (minutes < 1) {
+              return "Last seen few seconds ago";
+          } else if (hours < 1) {
+              return `Last seen ${minutes} minutes ago`;
+          } else {
+              return `Last seen ${hours} hours ago`;
+          }
+      } else {
+          // Use custom formatter instead of toLocaleDateString()
+          return `Last seen on ${formatDate(lastSeenDate)}`; 
+      }
+  }
+    // fetch lastseen
+    async function getLastSeen(username) {
+      console.log("async")
+      try {
+        const response = await fetch(`/get-lastseen/${username}`);
+        const data = await response.json();
+         // ... status handling code ...
+         const statusElement = document.getElementById("status-text");
+         statusElement.textContent = data.status === false
+          ? formatLastSeen(data.lastseen)
+          : (data.status === true ? "online" : "");
+
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    }
+
+    // creates message element
+    function createMessageElement(message) {
+      const messageElement = document.createElement("div");
+      messageElement.classList.add("message");
+      messageElement.classList.add(message.sender_id === currentUserId ? "sent" : "received");
+    
+
+      if (message.id) {
+        messageElement.id = `${message.id}`;
+      }
+
+      const messageTextElement = document.createElement("p");
+      messageTextElement.textContent = message.message_text;
+      messageElement.appendChild(messageTextElement);
+    
+      const timestampElement = document.createElement("small");
+      timestampElement.textContent = message.timestamp; // Assuming message.timestamp is in the format you want
+      messageElement.appendChild(timestampElement);
+    
+      const statusElement = document.createElement("small");
+      statusElement.textContent = message.seen; // Assuming message.status is "seen", "unseen", or "reached"
+      if (message.seen === "sent") {
+        statusElement.id = "sent";
+      }
+      messageElement.appendChild(statusElement);
+    
+      return messageElement;
+    }
+    
+    async function fetchChat(username) {
+      try {
+        const response = await fetch(`/get-chat/${username}`);
+        if (!response.ok) throw new Error(response.statusText);
+        const data = await response.json();
+    
+        const chatMessages = document.querySelector(".chat-messages");
+        chatMessages.innerHTML = "";
+    
+        data.message_data.forEach((message) => {
+          let seene = null;
+          if (message.seen == false) {
+            seene = "sent";
+          }
+          if (message.seen == true || message.sender_id != currentUserId) {
+            seene = "✔️✔️";
+          }
+          const Message = {
+            sender_id: message.sender_id,
+            message_text: message.message_text,
+            timestamp: message.timestamp,
+            seen: seene,
+          };
+          chatMessages.appendChild(createMessageElement(Message));
+        });
+    
+        // sending response to sender for seeing msg
+        socket.emit("msf", { su: username, id: currentUserId });
+    
+        // Scroll to bottom after loading messages
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      } catch (err) {
+        console.error("Chat fetch error:", err);
+      }
+    }
 
       document.querySelector('.contacts-container').addEventListener('click', (e) => {
         const contactItem = e.target.closest('.contact-item');
@@ -343,41 +490,24 @@
       const contactName = contactItem.querySelector("div > div:first-child").textContent;
       document.querySelector(".chat-topbar .topbar-name").textContent = contactName;
     
+      // fetch lastseen and add it to topbar
+      getLastSeen(username);
+      
       // Fetch chat messages
-      fetch(`/get-chat/${username}`)
-        .then((response) => {
-          if (!response.ok) throw new Error(response.statusText);
-          return response.json();
-        })
-        .then((data) => {
-          const statusElement = document.getElementById("status-text");
-          statusElement.textContent = data.status === false
-            ? data.last_seen
-            : (data.status === true ? "online" : "");
-    
-          const chatMessages = document.querySelector(".chat-messages");
-          chatMessages.innerHTML = "";
-    
-          data.message_data.forEach((message) => {
-            const messageElement = document.createElement("div");
-            messageElement.classList.add("message");
-            messageElement.classList.add(message.sender_id === currentUserId ? "sent" : "received");
-            messageElement.textContent = message.message_text;
-            chatMessages.appendChild(messageElement);
-          });
-        })
-        .catch((err) => console.error("Chat fetch error:", err));
+      fetchChat(username);
+        
+      
     });
     
     // Event listeners for custom events
     document.addEventListener('chat:selected', (e) => {
-      console.log("Selected chat:", e.detail.username);
+      console.log("selected chat:", e.detail.username);
       socket.emit("chat_selected",{"selected_username":e.detail.username, "my_id":currentUserId } )
     });
     
     document.addEventListener('chat:deselected', (e) => {
       console.log("Deselected chat:", e.detail.username);
-      socket.emit("chat_deselected",{"deselected_username":e.detail.username, "my_id":currentUserId } )
+      socket.emit("chat_deselected",{"deselected_username":e.detail.username, "my_id":currentUserId, "cct":Date.now() } )
     });
 
     
@@ -410,6 +540,165 @@
         }
       }, 2000);
       });
+
+      function formatUTCNow(format) {
+        const date = new Date(new Date().toUTCString());
+        const map = {
+          "%Y": date.getUTCFullYear(),
+          "%y": date.getUTCFullYear().toString().slice(-2),
+          "%m": (date.getUTCMonth() + 1).toString().padStart(2, '0'),
+          "%d": date.getUTCDate().toString().padStart(2, '0'),
+          "%H": date.getUTCHours().toString().padStart(2, '0'),
+          "%M": date.getUTCMinutes().toString().padStart(2, '0'),
+          "%S": date.getUTCSeconds().toString().padStart(2, '0'),
+        };
+      
+        return format.replace(/%[YmdHMSy]/g, match => map[match]);
+      }
+      
+      // helper function for unique id
+      function generateUniqueId() {
+        return `${Math.floor(100 + Math.random() * 900)}`;
+      }
+
+
+      // Send message handler
+      sendBtn.addEventListener("click", () => {
+        event.preventDefault();
+        console.log("sendbtn");
+        const message = messageInput.value.trim();
+        if (message && currentSelectedUsername) {
+
+          uuid = generateUniqueId();
+        
+          const fullMessage = {
+            sender_id: currentUserId,
+            message_text: message,
+            timestamp : Date.now(),
+            seen : "sending",
+            id: uuid
+          };
+          const messageElement = createMessageElement(fullMessage);
+          const chatMessages = document.querySelector(".chat-messages");
+        
+          // Remove typing indicator if present
+          if (typingIndicatorElement && typingIndicatorElement.parentNode === chatMessages) {
+            chatMessages.removeChild(typingIndicatorElement);
+            typingIndicatorElement = null;
+          }
+        
+          chatMessages.appendChild(messageElement);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+
+          socket.emit("client_message", {"message":message, "rec_username":currentSelectedUsername, "uuid":uuid} );
+          messageInput.value = "";
+        }
+    });
+
+    socket.on("msg_reached", (data) => {
+      if (currentSelectedUsername == data.ru) {
+        const messageElement = document.getElementById(data.uuid);
+        if (messageElement) {
+          const statusElement = messageElement.querySelector('small:last-child');
+          statusElement.textContent = "sent";
+          statusElement.id = "sent";
+        }
+      }
+    });
+    // message seen reciever
+    socket.on("msr", (data) => {
+      if (currentSelectedUsername == data.ru) {
+        const messageElement = document.getElementById(data.uuid);
+        if (messageElement) {
+          const statusElement = messageElement.querySelector('small:last-child');
+          statusElement.textContent = "✔️✔️";
+          statusElement.removeAttribute('id');
+        }
+      }
+    });
+    // ack message seen
+    socket.on("ams", (data) => {
+      console.log("ams",data.ru)
+      if (currentSelectedUsername == data.ru){
+        const sentElements = document.querySelectorAll('#sent');
+        sentElements.forEach(element => {
+          element.textContent = '✔️✔️';
+        });
+      }
+    });
+
+    // Receive message handler
+    socket.on("server_response", (data) => {
+      console.log("data.ru",data.su)
+      console.log("currentusername",currentSelectedUsername)
+      if(currentSelectedUsername == data.su){
+          const message = data;
+          // Defensive check
+          if (!message || !message.data || !message.sender_id) {
+            console.error("Malformed message:", message);
+            return;
+          }
+          
+            const fullMessage = {
+              sender_id: message.sender_id,
+              message_text: message.data,
+              timestamp : message.timestamp,
+              seen : '✔️✔️'
+            };
+            const messageElement = createMessageElement(fullMessage);
+          
+           socket.emit("msg_seen",{"uuid": data.uuid, "su":data.su, "ri":currentUserId });
+
+          const chatMessages = document.querySelector(".chat-messages");
+        
+          // Remove typing indicator if present
+          if (typingIndicatorElement && typingIndicatorElement.parentNode === chatMessages) {
+            chatMessages.removeChild(typingIndicatorElement);
+            typingIndicatorElement = null;
+          }
+        
+          chatMessages.appendChild(messageElement);
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    });
+    // function for create contact elemnent in realtime
+    function createContactElement(cont_name,cont_username) {
+      const contactItem = document.createElement("div");
+      contactItem.className = "contact-item";
+      contactItem.dataset.username = cont_username;
+    
+      const img = document.createElement("img");
+      img.src = "https://i.pravatar.cc/40?img=1";
+    
+      const contactInfo = document.createElement("div");
+    
+      const c_name = document.createElement("div");
+      c_name.style.fontWeight = "600";
+      c_name.textContent = cont_name;
+    
+      const c_username = document.createElement("div");
+      c_username.className = "user-status";
+      c_username.textContent = cont_username;
+    
+      contactInfo.appendChild(c_name);
+      contactInfo.appendChild(c_username);
+    
+      contactItem.appendChild(img);
+      contactItem.appendChild(contactInfo);
+    
+      return contactItem;
+    }
+    // create contact elemnent in realtime
+    socket.on("adc", (data) => {
+          const contactList = document.getElementById("contact-list");
+          if (contactList) {
+              const newContact = createContactElement("Not Saved", data.cu);
+              contactList.appendChild(newContact);
+          } else {
+              console.error("Contact list container not found");
+          }
+          });
+
     
 </script>
 

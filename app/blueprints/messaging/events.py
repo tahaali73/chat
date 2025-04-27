@@ -2,7 +2,8 @@ from app.extensions import socketio, mongo
 from bson import ObjectId
 from flask_socketio import emit
 from flask import request , flash
-from datetime import datetime
+
+import time
 import hashlib
 
 
@@ -93,7 +94,7 @@ class socke_handles():
                     user_id = str(user['_id'])
                     mongo.db.user.update_one(
                         {"_id": ObjectId(user_id)},
-                        {"$set": {"status": False, "last_seen": datetime.utcnow().isoformat()},
+                        {"$set": {"status": False, "last_seen": int(time.time() * 1000)},
                         "$unset": {'socket_id': ''}})
                     
     def active_chat():
@@ -123,7 +124,6 @@ class socke_handles():
                 
             @socketio.on('chat_deselected')
             def handle_deactive_chat(data):
-                print("worked on reload")
                 my_id = data["my_id"]
                 deselected_username = data["deselected_username"]
                 user = mongo.db.user.find_one({"_id": ObjectId(my_id)})
@@ -144,6 +144,17 @@ class socke_handles():
                         
                     except:
                         print("deselect query not excueted")
+                        
+                not_saved_contact = mongo.db.contacts.find_one({
+                                                "username": deselected_username,
+                                                "contacts.username": username
+                                            }) is None
+                if not not_saved_contact:
+                    mongo.db.contacts.update_one(
+                                        { "username":  deselected_username},
+                                        { "$set": { "contacts.$[elem].seen": data["cct"] } },
+                                        array_filters=[{"elem.username": username}]
+                                    )
             
 
             
@@ -152,9 +163,12 @@ class socke_handles():
     
     def message():
             @socketio.on('client_message')
-            def handle_message(message,rec_username): # Expecting message and rec_username in the data
-               
+            def handle_message(data): # Expecting message and rec_username in the data
+                print(f"message emited: {data}")
+                message = data['message']
+                rec_username = data['rec_username']
                 sid = request.sid
+                uuid = data["uuid"]
 
                 if rec_username and message:
                     try:
@@ -166,35 +180,94 @@ class socke_handles():
                             return
 
                         reciever = mongo.db.user.find_one({"username": rec_username})
-                        if not reciever or 'socket_id' not in reciever or '_id' not in reciever:
-                            print(f"Receiver with username {rec_username} not found or not connected")
-                            emit('server_response', {'error': 'Receiver not found or not online'}, room=sid)
+                        if not reciever:
                             return
 
-                        reciever_socketid = reciever['socket_id']
+                        
                         reciever_id = str(reciever['_id'])
-                        print(f'{user_id} / {reciever_id}')
                         chat_id = socke_handles.get_or_create_chat(user_id, reciever_id)
+                        timestamp =  int(time.time() * 1000)
 
                         message_sent = {
                             "chat_id": chat_id,
                             "sender_id": user_id,
                             "receiver_id": reciever_id,
                             "message_text": message,
-                            "timestamp": datetime.utcnow().isoformat(),
+                            "timestamp": timestamp,
                             "seen": False
                         }
 
                         result = mongo.db.message.insert_one(message_sent)
                         message_sent["_id"] = str(result.inserted_id)
+                        emit("msg_reached",{"uuid":uuid,"ru":rec_username},to=sid)
+                        print(f"uuid:{uuid}")
+                        try:
+                            checkIfUserActive = mongo.db.chatActive.find_one({"username":str(sender["username"])})
+                            actives = checkIfUserActive["active"]
+                        except:
+                            actives = []
+                        
+                        if rec_username in actives and ( rec_username != sender["username"]):
+                            reciever_socketid = reciever['socket_id']
+                            emit('server_response', {'data': message, 'sender_id': user_id, "timestamp":timestamp,"su":str(sender["username"]), "uuid":uuid }, room=[reciever_socketid])
 
-                        emit('server_response', {'data': message, 'sender_id': user_id}, room=[sid, reciever_socketid])
+                        not_saved_contact = mongo.db.contacts.find_one({
+                                                "username": rec_username,
+                                                "contacts.username": sender["username"]
+                                            }) is None
+                        
+                        if not_saved_contact:
+                            mongo.db.contacts.update_one(
+                                    { "username":  rec_username },
+                                    { "$push": { "contacts": { "username": sender["username"], "name": "Not Saved" } } }
+                                )
+                            # adc = add_contacts, cu = contact_username
+                            emit("adc",{"cu":sender["username"]},to=reciever['socket_id'])
 
                     except Exception as e:
                         print(f"Error handling message: {e}")
+                        flash("there is issue with connection, please refresh page")
                         emit('server_response', {'error': 'Failed to send message'}, room=sid)
+                    
                 else:
                     print("Incomplete message data received")
+                    
+    def msg_seen():
+        @socketio.on('msg_seen')
+        def handle_msgseen(data):
+            reciever = mongo.db.user.find_one({"_id":ObjectId(data["ri"])})
+            rec_username = reciever["username"]
+            try:
+                actives = mongo.db.chatActive.find_one({"username":rec_username})
+                active = actives["active"]
+            except:
+                active = ['']
+                
+            sender_username = data["su"]
+            if sender_username in active:
+                uuid = data["uuid"] 
+                sender = mongo.db.user.find_one({"username":sender_username})
+                socket_id = sender["socket_id"]
+                emit("msr",{"uuid":uuid, "ru":rec_username}, to=socket_id)
+                
+    def respone_msgseen():
+        @socketio.on("msf")
+        def handle_msgseen(data):
+            id = data["id"]
+            sender_username = data["su"]
+            reciever = mongo.db.user.find_one({"_id": ObjectId(id)})
+            rec_username = reciever["username"]
+            try:
+                 actives = mongo.db.chatActive.find_one({"username":rec_username})
+                 active = actives["active"]
+            except:
+                active = ['']
+                
+            if sender_username in active:
+                sender = mongo.db.user.find_one({"username":sender_username})
+                socket_id = sender["socket_id"]
+                #sending ack in realtime for msg seen by reciever 
+                emit("ams",{"ru":rec_username},to=socket_id)
                     
                 
     def typing():
@@ -207,7 +280,7 @@ class socke_handles():
             actives=mongo.db.chatActive.find_one({"username":username})
             
             
-            if actives and (rec_username in actives["active"]):
+            if actives and (rec_username in actives["active"]) and ( rec_username != username):
                 try:
                     reciever = mongo.db.user.find_one({'username':rec_username})
                     reciever_id = reciever['socket_id']

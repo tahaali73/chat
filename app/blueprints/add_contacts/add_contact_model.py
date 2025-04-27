@@ -5,23 +5,29 @@ from app.blueprints.add_contacts.forms import ContactForm
 
 class AddContact_Model():
     
+    # helper function for add contact
     def insertContact(self,name,username,username_):
-        already_available = mongo.db.contacts.find_one({
-                                    "username": username_,
-                                    "$or": [
-                                        {"contacts": {"$elemMatch": {"name": name}}},
-                                        {"contacts": {"$elemMatch": {"username": username}}}
-                                    ]
-                                })
-        if already_available:
-            flash("user already in your contact list")
+        user = mongo.db.user.find_one({"username": username})
+        
+        if user:
+            already_available = mongo.db.contacts.find_one({
+                                        "username": username_,
+                                        "$or": [
+                                            {"contacts": {"$elemMatch": {"name": name}}},
+                                            {"contacts": {"$elemMatch": {"username": username}}}
+                                        ]
+                                    })
+            if already_available:
+                flash("user already in your contact list")
+            
+            else:
+                mongo.db.contacts.update_one(
+                            { "username": username_ },
+                            { "$push": { "contacts": { "name": name, "username": username } } },
+                            upsert=True
+                        )
         else:
-            mongo.db.contacts.update_one(
-                        { "username": username_ },
-                        { "$push": { "contacts": { "name": name, "username": username } } },
-                        upsert=True
-                    )
-    
+            flash("user not available")
     
     def add_contacts(self,user_id):
         

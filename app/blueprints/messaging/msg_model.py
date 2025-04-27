@@ -17,7 +17,7 @@ class Msg_model():
             username = user['username']
             contact = mongo.db.contacts.find_one({'username':username})
             contacts = contact['contacts']
-        except TypeError:
+        except:
             contacts = ["Add contacts"]
         return contacts
     
@@ -28,7 +28,7 @@ class Msg_model():
         diff = now - last_seen_dt
         if diff.days == 0:
             if diff.seconds < 60:
-                return "Online"
+                return "Last seen few seconds ago"
             elif diff.seconds < 3600:
                 return f"Last seen {diff.seconds // 60} minutes ago"
             else:
@@ -43,7 +43,16 @@ class Msg_model():
         socke_handles.disconnect()
         socke_handles.message()
         socke_handles.typing()
-        contacts = self.get_contacts(user_id)
+        socke_handles.msg_seen()
+        socke_handles.respone_msgseen()
+        
+        try:
+            contacts = self.get_contacts(user_id)
+        except:
+            contacts = {"contacts":[{
+                "name":"Add contact",
+                "username":""
+            }]}
         
         return render_template("chat_area.html",forms=forms,contacts=contacts,user_id=user_id)
     
@@ -53,36 +62,28 @@ class Msg_model():
             reciever=mongo.db.user.find_one({"username":usernmae})
             #print(reciever)
             reciever_id = reciever['_id']
-            try:
-              status=reciever['status']
-            except TypeError:
-                status="offline"
-            try:
-                last_seen=reciever['last_seen']
-                last_seen = self.format_last_seen(last_seen)
-            except (TypeError, KeyError):
-                last_seen="offline"
-                
-            print(reciever_id)
+        
+            chat_id = socke_handles.get_or_create_chat(user_id,str(reciever_id))
+            message_detail = mongo.db.message.find({"chat_id": chat_id}, {
+                        "sender_id": 1,
+                        "message_text": 1,
+                        "timestamp": 1,
+                        "seen": 1,
+                        "_id": 0  
+                    })
+            # getting seen epoch time from contacts
+            result = mongo.db.contacts.find_one(
+                            { "_id":ObjectId(user_id), "contacts.username": usernmae },
+                            { "contacts.$": 1 }
+                        )
+            
+            if result and "contacts" in result and len(result["contacts"]) > 0:
+                    seen_value = result["contacts"][0].get("seen")
+            else: seen_value = 0
+            
+            return make_response({"ep_ti":seen_value,"message_data":message_detail},200)
         except:
             None
-        
-        try:
-            contacts = self.get_contacts(user_id)
-        except TypeError:
-            contacts = {"contacts":[{
-                "name":"Add contact",
-                "username":""
-            }]}
-       
-        chat_id = socke_handles.get_or_create_chat(user_id,str(reciever_id))
-        message_detail = mongo.db.message.find({"chat_id":chat_id})
-        
-        
-        #if len(message_detail)==:
-         #   return make_response({"msg":"no message found"},202)
-        
-        return make_response({"contact_name":contacts,"status":status,"last_seen":last_seen,"message_data":message_detail},200)
         
     
     def handle_chat_deselected(self):
@@ -112,6 +113,21 @@ class Msg_model():
                     return jsonify({"success": False}), 500
 
             return jsonify({"success": True}), 200
+        
+    def get_lastseen(self,username):
+            user_lastseen= None
+            status = None
+            try:
+                user = mongo.db.user.find_one({"username": username})
+                user_lastseen = user["last_seen"]
+                status = user["status"]
+            except:
+                if user_lastseen == None:
+                   user_lastseen = 0
+                if status == None:
+                   status = False
+            
+            return make_response({"lastseen":user_lastseen, "status":status},200)
 
     
         

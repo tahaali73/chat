@@ -24,3 +24,7 @@ def getChat(username):
 @msg_bp.route("/chat_deselected", methods=["POST"],endpoint="chat_deselected")
 def chat_deselect():
     return model.handle_chat_deselected()
+
+@msg_bp.route("/get-lastseen/<username>",endpoint="get-lastseen")
+def get_lastseen(username):
+    return model.get_lastseen(username)
