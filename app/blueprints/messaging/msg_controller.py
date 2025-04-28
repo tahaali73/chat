@@ -4,7 +4,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app.blueprints.messaging.msg_model import Msg_model
 
-msg_bp = Blueprint("messaging",__name__,template_folder="templates")
+msg_bp = Blueprint("messaging",__name__,template_folder="templates",static_folder="static")
 
 model = Msg_model()
 
@@ -14,10 +14,12 @@ def msg():
     user_id = get_jwt_identity()
     return model.msg(user_id=user_id)
 
-@msg_bp.route('/get-chat/<username>',endpoint="get-chat")
+@msg_bp.route('/get-chat', methods=['POST'],endpoint="get-chat")
 @jwt_required()
-def getChat(username):
-    user_id = get_jwt_identity()
+def getChat():
+    data = request.get_json()
+    username = data.get('username')
+    user_id = data.get('user_id')
     return model.getChat(user_id=user_id,usernmae=username)
 
 

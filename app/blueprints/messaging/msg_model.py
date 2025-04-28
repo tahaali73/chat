@@ -21,21 +21,6 @@ class Msg_model():
             contacts = ["Add contacts"]
         return contacts
     
-    def format_last_seen(self, last_seen):
-        # Format the last seen timestamp
-        last_seen_dt = datetime.strptime(last_seen[:19], "%Y-%m-%dT%H:%M:%S")
-        now = datetime.utcnow()
-        diff = now - last_seen_dt
-        if diff.days == 0:
-            if diff.seconds < 60:
-                return "Last seen few seconds ago"
-            elif diff.seconds < 3600:
-                return f"Last seen {diff.seconds // 60} minutes ago"
-            else:
-                return f"Last seen {diff.seconds // 3600} hours ago"
-        else:
-            return f"Last seen on {last_seen_dt.strftime('%Y-%m-%d')}"
-    
     def msg(self,user_id):
         forms = MessageForm()
         socke_handles.connect(user_id)
@@ -60,6 +45,8 @@ class Msg_model():
         
         try:
             reciever=mongo.db.user.find_one({"username":usernmae})
+            fetcher_user = mongo.db.user.find_one({"_id":ObjectId(user_id)})
+            fetcher_username = fetcher_user["username"]
             #print(reciever)
             reciever_id = reciever['_id']
         
@@ -73,10 +60,9 @@ class Msg_model():
                     })
             # getting seen epoch time from contacts
             result = mongo.db.contacts.find_one(
-                            { "_id":ObjectId(user_id), "contacts.username": usernmae },
+                            { "username":fetcher_username , "contacts.username": usernmae },
                             { "contacts.$": 1 }
                         )
-            
             if result and "contacts" in result and len(result["contacts"]) > 0:
                     seen_value = result["contacts"][0].get("seen")
             else: seen_value = 0
